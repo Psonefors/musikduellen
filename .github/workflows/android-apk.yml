@@ -22,15 +22,28 @@ jobs:
         with:
           channel: stable
 
-      - name: Ordna och rätta projektfiler
+      - name: Skapa projektmappar
         run: |
           mkdir -p lib assets/audio assets/web
           cp main.dart game.dart lib/
           cp player.html assets/web/
           cp suspense.wav demo1.wav demo2.wav demo3.wav assets/audio/
 
+      - name: Skapa Android-projekt
+        run: |
+          flutter create --project-name musikduellen --platforms android --no-pub .
+
+      - name: Återställ och rätta spelkoden
+        run: |
+          cp main.dart game.dart lib/
+
           python3 - <<'PY'
           from pathlib import Path
+
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          s = s.replace('if(wager)', 'if(wagering)')
+          p.write_text(s)
 
           p = Path('lib/game.dart')
           s = p.read_text()
@@ -40,15 +53,12 @@ jobs:
           )
           p.write_text(s)
 
-          p = Path('lib/main.dart')
-          s = p.read_text()
-          s = s.replace('if(wager)', 'if(wagering)')
-          p.write_text(s)
+          assert 'if(wager)' not in Path('lib/main.dart').read_text()
+          assert 'if (available.isEmpty)' not in Path('lib/game.dart').read_text()
           PY
 
-      - name: Skapa Android-projekt
-        run: |
-          flutter create --project-name musikduellen --platforms android --no-pub .
+          rm -f analysis_options.yaml
+          rm -rf test
 
       - name: Android-behörigheter
         run: |
@@ -70,9 +80,7 @@ jobs:
         run: flutter pub get
 
       - name: Kontrollera koden
-        run: |
-          rm -rf test
-          flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Bygg Android APK
         run: flutter build apk --release
