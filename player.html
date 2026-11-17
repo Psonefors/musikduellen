@@ -1,0 +1,54 @@
+<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Musikduellen</title>
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#f8f8ff;background:#0e1021}*{box-sizing:border-box}body{margin:0;padding:20px;max-width:600px;margin:auto}h1{font-size:30px;margin:8px 0}h2{font-size:23px}.sub{color:#b8b9d3}.card{background:#1d203a;border:1px solid #363a57;border-radius:22px;padding:20px;margin:16px 0}button,input{font:inherit;border-radius:12px;padding:14px}input{background:#11142b;color:white;border:1px solid #555a7b;width:100%}button{border:0;background:#d6ff61;color:#0e1021;font-weight:800;cursor:pointer}button:disabled{opacity:.5}button.secondary{background:#313757;color:white}.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.choices button{min-height:65px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0}.bets{display:flex;gap:12px}.bets button{flex:1;font-size:25px}.bets button.selected{background:#d6ff61}.bets button:not(.selected){background:#343957;color:white}.timer{font-size:50px;font-weight:900;color:#d6ff61}.bar{height:12px;border-radius:10px;background:#333851;overflow:hidden}.fill{height:100%;background:#d6ff61;transition:width .3s}.score{padding:8px 0;border-bottom:1px solid #363a57}.notice{color:#ffd77d}.hidden{display:none}small{color:#b8b9d3}.tag{padding:5px 8px;border-radius:10px;background:#38416b;font-size:12px}
+</style></head><body><div class="row"><div><small>MUSIKDUELLEN</small><h1>🎵 Spela!</h1></div><span id="round" class="tag">Väntar</span></div><div id="info" class="notice"></div>
+<div id="join" class="card"><h2>Anslut till duellen</h2><p class="sub">Skriv ditt namn eller lagnamn.</p><input id="name" maxlength="28" placeholder="T.ex. Team Rock"><p><button id="joinBtn">Gå med i spelet</button></p></div>
+<div id="game" class="hidden"><div class="card"><div class="row"><strong id="teamName"></strong><span id="myPoints" class="tag"></span></div><div id="content"></div></div><div class="card"><h2>Poängställning</h2><div id="scores"></div></div></div>
+<audio id="music" preload="none"></audio><audio id="suspense" preload="auto" src="/suspense"></audio>
+<script>
+const $=id=>document.getElementById(id);let id=localStorage.getItem('musikduellen-team')||'',lastRound=0,lastPhase='',lastViewKey='',bet=2,unlocked=false,offset=0;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function post(path,obj){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});const j=await r.json();if(!r.ok)throw Error(j.error||'Ett fel uppstod');return j;}
+function message(m){$('info').textContent=m;}
+$('joinBtn').onclick=async()=>{try{const j=await post('/join',{name:$('name').value});id=j.id;localStorage.setItem('musikduellen-team',id);message('Du är med!');poll();}catch(e){message(e.message);}};
+function soundReady(){unlocked=true;const m=$('music');m.muted=true;m.play().then(()=>{m.pause();m.currentTime=0;m.muted=false;}).catch(()=>{m.muted=false;});}
+async function lockBet(n){try{await post('/bet',{id,bet:n});message('Satsningen är låst!');poll();}catch(e){message(e.message);}}
+async function answer(a){try{await post('/answer',{id,answer:a});message('Svaret är skickat!');poll();}catch(e){message(e.message);}}
+function submitText(){answer($('textAnswer').value.trim());}
+function render(s){
+const you=s.you;if(!you){$('join').classList.remove('hidden');$('game').classList.add('hidden');return;}
+$('join').classList.add('hidden');$('game').classList.remove('hidden');$('teamName').textContent=you.name;$('myPoints').textContent=you.name+' • '+(s.teams.find(t=>t.name===you.name)?.points??0)+' poäng';$('round').textContent=s.round?'Runda '+s.round:'Lobby';
+$('scores').innerHTML=s.teams.map(t=>`<div class="row score"><span>${t.place?'🏆 '+t.place+': ':''}${esc(t.name)} ${t.qualified?'✅':''}</span><strong>${t.points} p</strong></div>`).join('');
+const viewKey=[s.phase,s.round,you.qualified,you.betReady,you.answered,s.mode,bet].join(':');
+if(viewKey===lastViewKey){const timer=$('seconds');const fill=$('progress');if(timer){const sec=Math.max(0,Math.ceil((30000-(Date.now()+offset-s.start))/1000));timer.textContent=sec+'s';if(fill)fill.style.width=(sec/30*100)+'%';}return;}
+lastViewKey=viewKey; const c=$('content');let html='';
+if((s.phase==='reveal'||s.phase==='finished') && you.lastCorrect!==null){
+ const right=you.lastCorrect===true;
+ const change=you.lastChange||0;
+ html=`<h2>${right?'✅ RÄTT SVAR!':'❌ FEL SVAR'}</h2><p><strong>Fråga:</strong> ${esc(s.question)}</p><p><strong>Ditt svar:</strong> ${esc(you.lastAnswer||'Inget svar')}</p><p><strong>Rätt svar:</strong> ${esc(s.correct)}</p><h2 style="color:${right?'#a9fa83':'#ff9292'}">${change>0?'+':''}${change} poäng</h2><p>Totalt: ${s.teams.find(t=>t.name===you.name)?.points??0} poäng</p><small>${esc(s.credit)}</small>`;
+ if(you.qualified)html+='<p>🏆 Ni har nått målet!</p>';
+}else if(you.qualified) html='<h2>🏆 Du är i mål!</h2><p>Vänta medan övriga lag spelar om placeringarna.</p>';
+else if(s.phase==='lobby') html='<h2>Du är ansluten ✅</h2><p>Spelledaren startar när alla lag är med.</p>';
+else if(s.phase==='wager') {
+ if(s.mode==='simple')html='<h2>Klassiskt läge</h2><p>+1 poäng för rätt svar. Vänta på nästa fråga.</p>';
+ else if(you.betReady)html=`<h2>🔒 Låst!</h2><p>Du satsade ${you.bet} poäng. Vänta på de andra lagen.</p>`;
+ else html=`<h2>Satsa före låten!</h2><p class="sub">Rätt: plus satsningen. Fel: minus satsningen. Minst 0 poäng.</p><div class="bets">${[1,2,3].map(n=>`<button class="${bet===n?'selected':''}" onclick="bet=${n};render(window.state)">${n}</button>`).join('')}</div><p><button onclick="lockBet(bet)">Lås ${bet} poäng</button></p>`;
+}else if(s.phase==='question'){
+ const secs=Math.max(0,Math.ceil((30000-(Date.now()+offset-s.start))/1000));
+ html=`<div id="seconds" class="timer">${secs}s</div><div class="bar"><div id="progress" class="fill" style="width:${secs/30*100}%"></div></div><h2 style="font-size:27px;line-height:1.2;color:#faffdd">${esc(s.question)}</h2>`;
+ if(s.playback==='individual')html+=`<button class="secondary" onclick="playNow()">🔊 ${unlocked?'Spela klippet':'Aktivera & spela ljud'}</button><p><small>Om ljudet inte startar automatiskt, tryck här. Använd gärna hörlurar.</small></p>`;
+ if(you.answered)html+='<p>✅ Ditt svar är inskickat. Vänta på resultatet.</p>';
+ else if(s.type==='choice')html+=`<div class="choices">${s.choices.map(o=>`<button onclick="answer(window.state.choices[${s.choices.indexOf(o)}])">${esc(o)}</button>`).join('')}</div>`;
+ else html+=`<input id="textAnswer" ${s.type==='year'?'inputmode="numeric"':''} placeholder="Skriv ditt svar" maxlength="100"><p><button onclick="submitText()">Skicka svar</button></p>`;
+}else if(s.phase==='reveal'||s.phase==='finished') {
+ html=`<h2>${s.phase==='finished'?'🏁 Matchen är klar!':'🎉 Rätt svar'}</h2><p><strong>${esc(s.correct)}</strong></p><small>${esc(s.credit)}</small><p>${s.phase==='reveal'?'Nästa omgång startar snart.':'Tack för att ni spelade Musikduellen!'}</p>`;
+}
+ c.innerHTML=html;
+ if(s.phase==='question'&&s.playback==='individual'&&s.round!==lastRound){stopSound();lastRound=s.round;playNow();}
+ if(s.phase!=='question'&&lastPhase==='question')stopSound();lastPhase=s.phase;
+}
+function stopSound(){for(const el of [$('music'),$('suspense')]){el.pause();try{el.currentTime=0;}catch(e){}}}
+async function playNow(){const m=$('music');if(m.src!==location.origin+'/audio?round='+window.state.round){m.src='/audio?round='+window.state.round;}try{await m.play();unlocked=true;message('Musiken spelas.');}catch(e){message('Tryck på Spela klippet för att aktivera ljudet i webbläsaren.');}}
+async function poll(){try{const r=await fetch('/state?id='+encodeURIComponent(id),{cache:'no-store'});const s=await r.json();offset=s.serverNow-Date.now();window.state=s;render(s);if(s.phase==='question'&&s.playback==='individual'&&s.round===lastRound){const secs=Math.max(0,Math.ceil((30000-(Date.now()+offset-s.start))/1000));if(secs<=15&&secs>0&&unlocked&&$('suspense').paused){$('music').pause();$('suspense').play().catch(()=>{});}}}catch(e){message('Ingen kontakt med spelledaren. Kontrollera Wi-Fi.');}}
+setInterval(poll,1000);poll();
+</script></body></html>
