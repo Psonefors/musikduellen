@@ -1,0 +1,19 @@
+name: musikduellen
+description: Lokalt musikquiz med spelledare och mobila lag
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  qr_flutter: ^4.1.0
+  audioplayers: ^6.5.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/web/player.html
+    - assets/audio/suspense.wav
+    - assets/audio/demo1.wav
+    - assets/audio/demo2.wav
+    - assets/audio/demo3.wav
