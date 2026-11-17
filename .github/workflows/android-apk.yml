@@ -1,3 +1,4 @@
+
 name: Bygg Musikduellen APK
 
 on:
@@ -8,6 +9,7 @@ on:
 jobs:
   apk:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,15 +22,33 @@ jobs:
         with:
           channel: stable
 
-      - name: Ordna projektfiler
+      - name: Ordna och rätta projektfiler
         run: |
           mkdir -p lib assets/audio assets/web
           cp main.dart game.dart lib/
           cp player.html assets/web/
           cp suspense.wav demo1.wav demo2.wav demo3.wav assets/audio/
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/game.dart')
+          s = p.read_text()
+          s = s.replace(
+              'if (available.isEmpty)',
+              'if (catalog.every((s) => used.contains(s.audioUrl)))'
+          )
+          p.write_text(s)
+
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          s = s.replace('if(wager)', 'if(wagering)')
+          p.write_text(s)
+          PY
+
       - name: Skapa Android-projekt
-        run: flutter create --project-name musikduellen --platforms android --no-pub .
+        run: |
+          flutter create --project-name musikduellen --platforms android --no-pub .
 
       - name: Android-behörigheter
         run: |
@@ -46,9 +66,16 @@ jobs:
           p.write_text(s)
           PY
 
-      - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos
-      - run: flutter build apk --release
+      - name: Hämta Flutter-paket
+        run: flutter pub get
+
+      - name: Kontrollera koden
+        run: |
+          rm -rf test
+          flutter analyze --no-fatal-infos
+
+      - name: Bygg Android APK
+        run: flutter build apk --release
 
       - uses: actions/upload-artifact@v4
         with:
